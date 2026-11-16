@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
         else if (a == "--wav") wav = next();
         else if (a == "--strace") strace = true;
         else if (a == "--iostat") iostat = true;
+
         else if (a == "--quiet") quiet = true;
         else if (a == "--release") release = next();
         else if (a == "--mount") { std::string mm = next(); size_t c = mm.find('='); m_mounts.push_back({mm.substr(0, c), mm.substr(c + 1)}); }

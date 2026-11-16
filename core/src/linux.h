@@ -185,6 +185,7 @@ public:
     std::string cwd = "/";
     u64 epoch_usec = 0;                  // wall clock at virtual time 0
     void queue_signal(int tid, int sig); // tid 0 = process
+    void stop(const std::string& why, int code) { kill_process(why, code); }
 
     int thread_count() const;
     u64 total_insns() const { return cpu.insn_count; }

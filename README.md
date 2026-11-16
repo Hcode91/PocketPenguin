@@ -34,7 +34,8 @@ Tested with a real game: **Go Bear Go!** (GP2X, Fenix engine). Its intro, title,
 
 1. Build the APK: GitHub Actions → *Build* → artifact `GP2XDroid-apk`.
 2. **Add game folder** (or **Add game .zip**) and pick the game's folder, the one with the `.gpe` and
-   its data files.
+   its data files. **Add SD card .img** imports every game from a whole SD card dump (FAT12/16/32). A `.zip`
+   that contains a card `.img` works too. GPH menu `.ini` files are used to pick each game's start file.
 3. Tap the game to play. Long-press it to change the console model, the CPU speed or the start file.
    The model is guessed from the program: static old-ABI → GP2X, dynamic old-ABI → Wiz, EABI → Caanoo.
 4. Some games are linked against the console's own system libraries. Add those with **Firmware files**:
@@ -58,5 +59,7 @@ Tests: `tests/run_tests.sh ./gp2xcli` (needs `gcc-arm-linux-gnueabi`).
 - The F100's second CPU (ARM940T), which some emulators use for sound.
 - FPA floating-point instructions (very old hard-float builds). These are reported in the log.
 - `fork()`/`system()`.
+- Games sold through the GPH store (INKA DRM, e.g. Deicide 3 and the Toaplan ports). Their licence sits in a
+  protected area of the original SD card that a card dump doesn't contain. The emulator reports this.
 - YUV video layers, TV out, and networking.
 - A JIT. The interpreter runs at about 80–100 MIPS on a desktop, so a lower CPU speed setting can help on phones.

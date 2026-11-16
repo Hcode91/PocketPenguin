@@ -33,7 +33,7 @@ import java.util.zip.ZipInputStream;
 
 /** Game library: import games (folder or zip), pick the model and launch. */
 public class MainActivity extends Activity {
-    private static final int PICK_GAME_DIR = 1, PICK_GAME_ZIP = 2, PICK_FW_DIR = 3, PICK_FW_ZIP = 4;
+    private static final int PICK_GAME_DIR = 1, PICK_GAME_ZIP = 2, PICK_FW_DIR = 3, PICK_FW_ZIP = 4, PICK_SD_IMG = 5;
     private static final String[] MODEL_NAMES = {"GP2X F100", "GP2X F200 (touchscreen)", "GP2X Wiz", "GP2X Caanoo"};
 
     private File sdDir;
@@ -68,11 +68,15 @@ public class MainActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.addView(button("Add game folder", v -> pick(PICK_GAME_DIR)));
         row.addView(button("Add game .zip", v -> pick(PICK_GAME_ZIP)));
-        row.addView(button("Firmware files", v -> firmwareDialog()));
         root.addView(row);
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.addView(button("Add SD card .img", v -> pick(PICK_SD_IMG)));
+        row2.addView(button("Firmware files", v -> firmwareDialog()));
+        root.addView(row2);
 
         empty = new TextView(this);
-        empty.setText("\nNo games yet.\n\nAdd a game's folder (the one with the .gpe file and its data) or a .zip of it. "
+        empty.setText("\nNo games yet.\n\nAdd a game's folder (the one with the .gpe file and its data), a .zip of it, or a whole SD card dump (.img, also inside a .zip). "
                 + "Most games run on their own. Games built against the console's system libraries also need "
                 + "\"Firmware files\": the lib folders copied from your own device.");
         empty.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -270,8 +274,10 @@ public class MainActivity extends Activity {
         busy = new AlertDialog.Builder(this).setMessage("Copying files...").setCancelable(false).show();
         new Thread(() -> {
             String err = null;
+            importedCount = -1;
             try {
                 switch (req) {
+                    case PICK_SD_IMG: importImage(uri); break;
                     case PICK_GAME_DIR: importTree(uri, null); break;
                     case PICK_GAME_ZIP: importZip(uri, null); break;
                     case PICK_FW_DIR: importTree(uri, EmuActivity.firmwareDir(getFilesDir(), fwModel)); break;
@@ -285,9 +291,75 @@ public class MainActivity extends Activity {
                 if (busy != null) busy.dismiss();
                 if (fe != null) info("Import failed", fe);
                 else if (req == PICK_FW_DIR || req == PICK_FW_ZIP) info("Firmware files added", "They will be used for games running as " + MODEL_NAMES[fwModel] + ".");
+                else if (importedCount == 0) info("No games found", "No folder with a .gpe/.gpu file was found on that SD card image.");
+                else if (importedCount > 0) info("SD card imported", importedCount + " game(s) added.");
                 refresh();
             });
         }).start();
+    }
+
+    private volatile int importedCount = -1;
+
+    private void setBusy(String msg) { runOnUiThread(() -> { if (busy != null) busy.setMessage(msg); }); }
+
+    /** Import every game folder from an SD card image picked with the document picker. */
+    private void importImage(Uri uri) throws Exception {
+        try (android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r");
+             FileInputStream in = new FileInputStream(pfd.getFileDescriptor())) {
+            importImage(in.getChannel());
+        }
+    }
+
+    private void importImage(java.nio.channels.FileChannel chn) throws Exception {
+        FatImage img = new FatImage(chn);
+        List<FatImage.Entry> root = img.list(0);
+        // Menu .ini files on GPH cards name each game's start file: path="/folder/game.gpe"
+        java.util.Map<String, String> iniExe = new java.util.HashMap<>();
+        for (FatImage.Entry e : root) {
+            if (e.dir || !e.name.toLowerCase(Locale.ROOT).endsWith(".ini") || e.size > 4096) continue;
+            File t = File.createTempFile("ini", ".txt", getCacheDir());
+            img.extractFile(e, t);
+            String text = new String(java.nio.file.Files.readAllBytes(t.toPath()), "ISO-8859-1");
+            t.delete();
+            String path = FatImage.iniValue(text, "path");
+            if (path == null) continue;
+            path = path.replace('\\', '/');
+            while (path.startsWith("/")) path = path.substring(1);
+            int slash = path.indexOf('/');
+            if (slash > 0) iniExe.put(path.substring(0, slash).toLowerCase(Locale.ROOT), path.substring(slash + 1));
+        }
+        int count = 0;
+        List<Object[]> games = new ArrayList<>();
+        findImageGames(img, root, 0, games);
+        for (Object[] g : games) {
+            FatImage.Entry e = (FatImage.Entry) g[0];
+            setBusy("Copying " + e.name + "...");
+            File dest = new File(sdDir, safeName(e.name));
+            deleteTree(dest);
+            img.extractDir(e.cluster, dest);
+            String exe = iniExe.get(e.name.toLowerCase(Locale.ROOT));
+            if (exe != null && new File(dest, exe).exists()) prefs.edit().putString(dest.getName() + ".exe", exe).apply();
+            prefs.edit().remove(dest.getName() + ".model").apply();
+            count++;
+        }
+        importedCount = count;
+    }
+
+    /** A game folder has a .gpe/.gpu/.sh in it or one level down; otherwise look inside (e.g. /game/...). */
+    private void findImageGames(FatImage img, List<FatImage.Entry> entries, int depth, List<Object[]> out) throws Exception {
+        for (FatImage.Entry e : entries) {
+            if (!e.dir) continue;
+            String n = e.name.toLowerCase(Locale.ROOT);
+            if (depth == 0 && (n.equals("system volume information") || n.equals("recycled") || n.startsWith("$"))) continue;
+            List<FatImage.Entry> kids = img.list(e.cluster);
+            boolean game = false;
+            for (FatImage.Entry k : kids) {
+                if (!k.dir && launchable(k.name) && !k.name.equalsIgnoreCase("autorun.gpu")) game = true;
+                if (k.dir && !game) for (FatImage.Entry k2 : img.list(k.cluster)) if (!k2.dir && launchable(k2.name)) { game = true; break; }
+            }
+            if (game) out.add(new Object[] {e});
+            else if (depth < 2) findImageGames(img, kids, depth + 1, out);
+        }
     }
 
     /** Copy a SAF tree. dest == null: new game folder named after the picked folder. */
@@ -341,6 +413,15 @@ public class MainActivity extends Activity {
                 try (OutputStream o = new FileOutputStream(out)) { copy(z, o); }
             }
         }
+        // A zip holding an SD card image: import the card.
+        if (dest == null) {
+            File imgFile = findImageFile(tmp);
+            if (imgFile != null) {
+                try (FileInputStream in = new FileInputStream(imgFile)) { importImage(in.getChannel()); }
+                deleteTree(tmp);
+                return;
+            }
+        }
         // A zip holding a single top-level folder: use that folder.
         File src = tmp;
         File[] top = tmp.listFiles();
@@ -353,6 +434,16 @@ public class MainActivity extends Activity {
             mergeInto(src, dest);
         }
         deleteTree(tmp);
+    }
+
+    private static File findImageFile(File dir) {
+        File[] fs = dir.listFiles();
+        if (fs == null) return null;
+        for (File f : fs) {
+            if (f.isDirectory()) { File r = findImageFile(f); if (r != null) return r; }
+            else if (f.getName().toLowerCase(Locale.ROOT).endsWith(".img") && f.length() > (8 << 20)) return f;
+        }
+        return null;
     }
 
     private void mergeInto(File src, File dst) throws Exception {

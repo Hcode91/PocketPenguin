@@ -741,7 +741,7 @@ void Machine::io_write(u32 pa, u32 v, int size) {
     }
 }
 
-std::shared_ptr<File> Machine::open_device(Linux&, const std::string& p, int, int* err) {
+std::shared_ptr<File> Machine::open_device(Linux& L, const std::string& p, int, int* err) {
     *err = 0;
     if (p == "/dev/mem") return std::make_shared<MemDev>(this);
     if (p == "/dev/fb0" || p == "/dev/fb/0") return std::make_shared<FbDev>(this, FB_PHYS);
@@ -758,6 +758,14 @@ std::shared_ptr<File> Machine::open_device(Linux&, const std::string& p, int, in
         return std::make_shared<JsDev>(this);
     }
     if (p == "/dev/batt" || p == "/dev/pollux_batt") return std::make_shared<BattDev>();
+    if (p == "/dev/mmc_nd") {
+        L.stop("This game is copy-protected (INKA DRM from the GPH store). Its licence is kept in a protected area "
+               "of the original SD card that a normal card dump does not contain, so it can't run.", 1);
+        *err = 2;
+        return nullptr;
+    }
+    // Never fall through to device nodes inside a firmware root folder.
+    if (p.rfind("/dev/", 0) == 0 && p != "/dev/shm" && p.rfind("/dev/shm/", 0) != 0) { *err = 2; return nullptr; }
     return nullptr;
 }
 
