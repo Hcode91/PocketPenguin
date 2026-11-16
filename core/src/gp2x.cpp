@@ -1,5 +1,6 @@
 // GP2XDroid - GP2X F100/F200, Wiz and Caanoo machine model.
 #include "gp2x.h"
+#include "glhle.h"
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -269,6 +270,78 @@ public:
     int poll_mask(Linux&) override { return seen != m->touch_seq ? 1 : 0; }
 };
 
+// Wiz/Caanoo touchscreen: Linux input-event device read by tslib (module_raw input). While the
+// screen is held, the driver delivers a sample every 10 ms like the real one; release sends pressure 0.
+class TouchEvDev : public File {
+public:
+    Machine* m;
+    bool was_down = false;
+    u64 next_sample = 0;
+    explicit TouchEvDev(Machine* mm) : m(mm) {}
+    std::deque<u8> queue;           // events not read yet
+    bool due(Linux& L) const {
+        bool down = m->touch_down;
+        return (down && (!was_down || L.now() >= next_sample)) || (!down && was_down);
+    }
+    void generate(Linux& L) {
+        bool down = m->touch_down;
+        u64 us = L.epoch_usec + L.usec();
+        auto ev = [&](u16 type, u16 code, s32 val) {
+            u8 e[16]; u32 s = (u32)(us / 1000000), u = (u32)(us % 1000000);
+            memcpy(e, &s, 4); memcpy(e + 4, &u, 4); memcpy(e + 8, &type, 2); memcpy(e + 10, &code, 2); memcpy(e + 12, &val, 4);
+            queue.insert(queue.end(), e, e + 16);
+        };
+        if (down) {
+            ev(3, 0, m->touch_x); ev(3, 1, m->touch_y); ev(3, 24, 255);
+            if (!was_down) ev(1, 0x14A, 1);
+        } else { ev(3, 24, 0); ev(1, 0x14A, 0); }
+        ev(0, 0, 0);
+        was_down = down;
+        next_sample = L.now() + L.cycles_from_usec(10000);
+    }
+    s32 read(Linux& L, u32 buf, u32 len) override {
+        if (len < 16) return -22;
+        if (queue.empty()) {
+            if (!due(L)) return L.block_retry(m, m->touch_down ? next_sample : ~0ull);
+            generate(L);
+        }
+        u32 n = std::min<u32>((u32)queue.size(), len & ~15u);
+        std::vector<u8> out(queue.begin(), queue.begin() + n);
+        queue.erase(queue.begin(), queue.begin() + n);
+        L.mem.write(buf, out.data(), n);
+        return (s32)n;
+    }
+    int poll_mask(Linux& L) override { return (!queue.empty() || due(L)) ? 1 : 0; }
+    s32 ioctl(Linux& L, u32 req, u32 arg) override {
+        u32 nr = req & 0xFF, size = (req >> 16) & 0x3FFF;
+        if (((req >> 8) & 0xFF) != 0x45) return -25;
+        if (nr == 0x01) { L.mem.w32(arg, 0x010000); return 0; }                        // EVIOCGVERSION
+        if (nr == 0x02) { u16 id[4] = {0x19, 0, 0, 0}; L.mem.write(arg, id, 8); return 0; } // EVIOCGID
+        if (nr == 0x06) { const char* n = "Pollux Touchscreen"; u32 k = std::min<u32>(size, 19); L.mem.write(arg, n, k); return (s32)k; }
+        if (nr >= 0x20 && nr < 0x40) {                                                   // EVIOCGBIT(ev, len)
+            // Like the kernel, copy only the real bitmap size (EV_MAX 0x1f, KEY_MAX 0x1ff, ABS_MAX 0x3f).
+            u32 ev = nr - 0x20;
+            u32 real = ev == 0 ? 4 : ev == 1 ? 64 : ev == 3 ? 8 : 0;
+            size = std::min(size, real);
+            if (!size) return 0;
+            std::vector<u8> bits(size, 0);
+            auto set = [&](u32 b) { if (b / 8 < size) bits[b / 8] |= (u8)(1u << (b % 8)); };
+            if (ev == 0) { set(0); set(1); set(3); }
+            else if (ev == 1) set(0x14A);
+            else if (ev == 3) { set(0); set(1); set(24); }
+            L.mem.write(arg, bits.data(), size);
+            return (s32)size;
+        }
+        if (nr >= 0x40 && nr < 0x80) {                                                   // EVIOCGABS(abs)
+            u32 abs = nr - 0x40;
+            s32 info[6] = {0, 0, abs == 0 ? 319 : abs == 1 ? 239 : 255, 0, 0, 0};
+            L.mem.write(arg, info, std::min<u32>(size ? size : 24, 24));
+            return 0;
+        }
+        return 0; // EVIOCGRAB etc.
+    }
+};
+
 class JsDev : public File {
 public:
     Machine* m;
@@ -326,6 +399,14 @@ public:
     int poll_mask(Linux&) override { return 1; }
 };
 
+// /dev/ga3d: the 3D engine. Its work is done by the OpenGL ES emulation, so this only has to
+// satisfy the Wiz's libglport (open, mmap, ioctl).
+class Ga3dDev : public File {
+public:
+    s32 ioctl(Linux&, u32, u32) override { return 0; }
+    s32 mmap(Linux& L, u32 va, u32 len, u32, u32, u64) override { L.mem.map_anon(va, len); return 0; }
+};
+
 class BattDev : public File {
 public:
     s32 read(Linux& L, u32 buf, u32 len) override {
@@ -360,9 +441,29 @@ Machine::Machine(Model m) : model(m), linux(this) {
         regs[0x2818 >> 1] = 239;                        // DPC_Y_MAX
     }
     set_fb_mode(16, 0, 640);
+    gl_hle = new Hle(this, &linux);
+    gl_hle->log = [this](const std::string& s) { linux.log("%s", s.c_str()); };
+    gl_hle->log_calls = getenv("GP2X_GLLOG") != nullptr;
+    linux.on_file_map = [this](const std::string& h, u32 va, u32 len, u64 off) { gl_hle->on_map(h, va, len, off); };
 }
 
-Machine::~Machine() {}
+Machine::~Machine() { delete gl_hle; }
+
+void Machine::present_gl(const u32* src, int w, int h) {
+    // Draw into the buffer the display currently shows (Wiz/Caanoo: MLC layer 1; GP2X: RGB region).
+    u32 addr, vstride;
+    if (pollux()) { addr = get32(regs, 0x406C); vstride = get32(regs, 0x4060); }
+    else { addr = regs[mlc_addr_reg >> 1] | ((u32)regs[(mlc_addr_reg + 2) >> 1] << 16); vstride = regs[0x290C >> 1]; }
+    if (!vstride || vstride > 8192) vstride = 640;
+    for (int y = 0; y < h && y < H; y++)
+        for (int x = 0; x < w && x < W; x++) {
+            u64 pa = addr + (u64)y * vstride + (u64)x * 2;
+            if (pa + 2 > ram.size()) continue;
+            u32 c = src[y * w + x];
+            u16 v = (u16)((((c >> 19) & 31) << 11) | (((c >> 10) & 63) << 5) | ((c >> 3) & 31));
+            memcpy(&ram[pa], &v, 2);
+        }
+}
 
 void Machine::set_fb_mode(int bpp, u32 offset, u32 line) {
     fb_bpp = (u32)bpp;
@@ -396,9 +497,13 @@ bool Machine::start(const std::string& root, const std::string& game, int cpu_mh
     std::string etc = root + "/etc";
     mkdir(etc.c_str(), 0755);
     std::string pc = etc + "/pointercal";
+    // tslib calibration: the emulated touchscreens report screen pixels, so always use identity.
+    if (FILE* f = fopen(pc.c_str(), "w")) { fputs("65536 0 0 0 65536 0 65536\n", f); fclose(f); }
+    std::string tsdir = etc + "/tslib", tsconf = tsdir + "/ts.conf-input";
+    mkdir(tsdir.c_str(), 0755);
     struct stat s;
-    if (stat(pc.c_str(), &s) != 0) {
-        if (FILE* f = fopen(pc.c_str(), "w")) { fputs("65536 0 0 0 65536 0 65536\n", f); fclose(f); }
+    if (stat(tsconf.c_str(), &s) != 0) {
+        if (FILE* f = fopen(tsconf.c_str(), "w")) { fputs("module_raw input\nmodule linear\n", f); fclose(f); }
     }
     std::vector<std::string> argv = {game};
     argv.insert(argv.end(), args.begin(), args.end());
@@ -426,6 +531,7 @@ void Machine::run_frame() {
     }
     render();
     frame_no++;
+    frame_count = frame_no;
 }
 
 void Machine::set_buttons(u32 mask) {
@@ -753,11 +859,16 @@ std::shared_ptr<File> Machine::open_device(Linux& L, const std::string& p, int, 
         if (model == Model::F100) { *err = 2; return nullptr; }
         return std::make_shared<TouchDev>(this);
     }
+    if (p == "/dev/input/event0") {
+        if (!pollux()) { *err = 2; return nullptr; }
+        return std::make_shared<TouchEvDev>(this);
+    }
     if (p == "/dev/input/js0" || p == "/dev/js0") {
         if (model != Model::CAANOO) { *err = 2; return nullptr; }
         return std::make_shared<JsDev>(this);
     }
     if (p == "/dev/batt" || p == "/dev/pollux_batt") return std::make_shared<BattDev>();
+    if (p == "/dev/ga3d") return std::make_shared<Ga3dDev>();
     if (p == "/dev/mmc_nd") {
         L.stop("This game is copy-protected (INKA DRM from the GPH store). Its licence is kept in a protected area "
                "of the original SD card that a normal card dump does not contain, so it can't run.", 1);

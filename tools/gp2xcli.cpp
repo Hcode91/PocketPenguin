@@ -1,6 +1,6 @@
 // GP2XDroid desktop runner, used for testing the core without Android.
 //   gp2xcli [--model f100|f200|wiz|caanoo] [--root DIR] [--mhz N] [-f FRAMES] [-o shot.ppm]
-//           [-k FRAME:MASK]... [--wav out.wav] [--mount /mnt/sd=HOSTDIR] [--strace] [--quiet] GAME [ARGS]
+//           [-k FRAME:MASK]... [-t FRAME:X,Y | -t FRAME:-]... [--wav out.wav] [--mount /mnt/sd=HOSTDIR] [--strace] [--quiet] GAME [ARGS]
 // GAME is a guest path (inside --root). Without --root the host filesystem is used as "/".
 #include "../core/src/gp2x.h"
 #include <cstdio>
@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
     bool profile = false;
     static std::map<u32, u64> prof;
     std::map<int, u32> keys;
+    std::map<int, std::pair<int, int>> touches;
     std::vector<std::string> args;
     std::vector<std::pair<std::string, std::string>> m_mounts;
     for (int i = 1; i < argc; i++) {
@@ -67,6 +68,8 @@ int main(int argc, char** argv) {
         else if (a == "--quiet") quiet = true;
         else if (a == "--release") release = next();
         else if (a == "--mount") { std::string mm = next(); size_t c = mm.find('='); m_mounts.push_back({mm.substr(0, c), mm.substr(c + 1)}); }
+        else if (a == "-t") { std::string k = next(); size_t col = k.find(':'); int f = atoi(k.substr(0, col).c_str()); std::string v = k.substr(col + 1);
+            if (v == "-") touches[f] = {-1, -1}; else { size_t cm = v.find(','); touches[f] = {atoi(v.substr(0, cm).c_str()), atoi(v.substr(cm + 1).c_str())}; } }
         else if (a == "-k") { std::string k = next(); size_t c = k.find(':'); keys[atoi(k.substr(0, c).c_str())] = (u32)strtoul(k.substr(c + 1).c_str(), nullptr, 0); }
         else args.push_back(a);
     }
@@ -87,6 +90,8 @@ int main(int argc, char** argv) {
     for (; f < frames && m.running(); f++) {
         auto it = keys.find(f);
         if (it != keys.end()) m.set_buttons(it->second);
+        auto tt = touches.find(f);
+        if (tt != touches.end()) m.set_touch(tt->second.first >= 0, std::max(tt->second.first, 0), std::max(tt->second.second, 0));
         m.run_frame();
         s16 buf[4096];
         size_t n;

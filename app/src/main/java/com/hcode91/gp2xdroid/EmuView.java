@@ -175,7 +175,7 @@ public class EmuView extends View {
             if ((action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP) && i == e.getActionIndex()) continue;
             if (action == MotionEvent.ACTION_CANCEL) continue;
             float x = e.getX(i), y = e.getY(i);
-            if (model == Native.F200 && screen.contains((int) x, (int) y)) {
+            if (model != Native.F100 && screen.contains((int) x, (int) y)) {
                 tdown = true;
                 tx = (int) ((x - screen.left) * Native.W / screen.width());
                 ty = (int) ((y - screen.top) * Native.H / screen.height());

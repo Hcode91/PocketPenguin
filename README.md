@@ -19,8 +19,11 @@ GP2XDroid runs them like `qemu-user` does. It does **not** boot a firmware image
     the vsync line and the 7.37 MHz TCOUNT timer.
   - Wiz/Caanoo: Pollux registers. That includes the MLC layers (same layout as the LF1000 in DidjDroid),
     the DPC vsync flag and the timers.
-  - Devices: `/dev/fb0`, `/dev/GPIO`, `/dev/dsp` (OSS), `/dev/mixer`, the F200 touchscreen and the
-    Caanoo joystick (`/dev/input/js0`).
+  - Devices: `/dev/fb0`, `/dev/GPIO`, `/dev/dsp` (OSS), `/dev/mixer`, the F200 touchscreen, the Wiz/Caanoo
+    touchscreen (`/dev/input/event0`, read through tslib) and the Caanoo joystick (`/dev/input/js0`).
+- **3D (Wiz/Caanoo)**: calls into the firmware's `libopengles_lite.so` are trapped and run by an OpenGL ES 1.1
+  software renderer. That's the same renderer DidjDroid uses, because the Wiz has the same GA3D 3D engine as
+  the LeapFrog Didj.
 - **FPA floating point**: old toolchains (e.g. the Wiz firmware's glibc) use FPA instructions, which the
   real kernel emulated in software. `core/src/fpa.cpp` does the same.
 - **Timing**: time is virtual and driven by the emulated CPU clock. Programs that busy-wait on vsync are
@@ -34,6 +37,8 @@ Tested with real games:
 - **Go Bear Go!** (GP2X, Fenix engine): intro, title, menu and level 1, with music.
 - **Deicide 3** (Wiz, dynamically linked against the Wiz firmware 1.2.6 libraries): intro cutscenes, story and
   sound. Its full-motion video is CPU-heavy, because the Wiz ran it at 533 MHz.
+- **Propis** (Wiz, OpenGL ES + touchscreen): logo, title, touch menus and music.
+- Wiz Toaplan ports (Demons World, Out Zone, Snow Bros 2, Twin Cobra, Zero Wing) boot to their attract screens.
 
 ## Using it
 

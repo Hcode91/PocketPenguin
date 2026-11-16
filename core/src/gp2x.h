@@ -9,6 +9,8 @@
 
 namespace gp2x {
 
+class Hle;
+
 enum class Model { F100, F200, WIZ, CAANOO };
 
 // Canonical button bits (GP2X layout, also used by the Wiz /dev/GPIO driver).
@@ -32,6 +34,9 @@ public:
 
     Model model;
     Linux linux;
+    Hle* gl_hle = nullptr;                    // OpenGL ES (libopengles_lite.so) emulation
+    u64 frame_count = 0;
+    void present_gl(const u32* src, int w, int h);  // show a frame rendered by the GL emulation
 
     // Start a game. 'root' is the host folder used as "/", 'game' a guest path such as
     // /mnt/sd/game/game.gpe. cpu_mhz sets the virtual CPU speed.

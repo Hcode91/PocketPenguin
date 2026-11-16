@@ -123,6 +123,7 @@ public:
         std::vector<u8> tmp(len);
         ssize_t r = ::pread(fd, tmp.data(), len, (off_t)off);
         if (r > 0) L.mem.write(va, tmp.data(), (u32)r);
+        if (L.on_file_map) L.on_file_map(hpath, va, len, off);
         return 0;
     }
     s32 fstat(Linux&, GuestStat* st) override {

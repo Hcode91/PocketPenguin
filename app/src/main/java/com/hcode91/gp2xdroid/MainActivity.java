@@ -34,7 +34,7 @@ import java.util.zip.ZipInputStream;
 /** Game library: import games (folder or zip), pick the model and launch. */
 public class MainActivity extends Activity {
     private static final int PICK_GAME_DIR = 1, PICK_GAME_ZIP = 2, PICK_FW_DIR = 3, PICK_FW_ZIP = 4, PICK_SD_IMG = 5;
-    private static final String[] MODEL_NAMES = {"GP2X F100", "GP2X F200 (touchscreen)", "GP2X Wiz", "GP2X Caanoo"};
+    private static final String[] MODEL_NAMES = {"GP2X F100", "GP2X F200 (touchscreen)", "GP2X Wiz (touchscreen)", "GP2X Caanoo (touchscreen)"};
 
     private File sdDir;
     private ListView list;

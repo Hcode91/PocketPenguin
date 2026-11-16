@@ -6,7 +6,9 @@ add_library(gp2xdroid SHARED
     ${CORE}/arm926.cpp
     ${CORE}/linux.cpp
     ${CORE}/gp2x.cpp
-    ${CORE}/fpa.cpp)
+    ${CORE}/fpa.cpp
+    ${CORE}/glhle.cpp
+    ${CORE}/gles.cpp)
 target_include_directories(gp2xdroid PRIVATE ${CORE})
 target_compile_options(gp2xdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation)
 target_link_libraries(gp2xdroid log)

@@ -157,6 +157,8 @@ public:
     std::function<void(const std::string&)> on_log;     // emulator diagnostics
     std::function<void(const std::string&)> on_output;  // guest stdout/stderr
     bool strace = false;
+    // Called when a host file is mapped into guest memory (used to spot libopengles_lite.so).
+    std::function<void(const std::string& host_path, u32 va, u32 len, u64 off)> on_file_map;
     u64 fpa_count = 0;                   // FPA instructions emulated (statistics)
 
     // Load a program (ELF or a launcher shell script) and set up the main thread.
