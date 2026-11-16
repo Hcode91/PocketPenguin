@@ -40,7 +40,8 @@ int main(int argc, char** argv) {
     Model model = Model::WIZ;
     std::string root = "/", out, wav, release;
     int frames = 600, mhz = 200;
-    bool strace = false, quiet = false;
+    bool strace = false, quiet = false, iostat = false;
+    std::map<u32, u64> stats;
     std::map<int, u32> keys;
     std::vector<std::string> args;
     std::vector<std::pair<std::string, std::string>> m_mounts;
@@ -57,6 +58,7 @@ int main(int argc, char** argv) {
         else if (a == "-o") out = next();
         else if (a == "--wav") wav = next();
         else if (a == "--strace") strace = true;
+        else if (a == "--iostat") iostat = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--release") release = next();
         else if (a == "--mount") { std::string mm = next(); size_t c = mm.find('='); m_mounts.push_back({mm.substr(0, c), mm.substr(c + 1)}); }
@@ -66,6 +68,7 @@ int main(int argc, char** argv) {
     if (args.empty()) { fprintf(stderr, "usage: gp2xcli [options] GAME [ARGS]\n"); return 2; }
     Machine m(model);
     m.linux.strace = strace;
+    if (iostat) m.io_stats = &stats;
     m.linux.mounts = m_mounts;
     if (!release.empty()) m.linux.uname_release = release;
     m.linux.on_log = [&](const std::string& s) { if (!quiet) fprintf(stderr, "[gp2x] %s\n", s.c_str()); };
@@ -87,6 +90,10 @@ int main(int argc, char** argv) {
     if (!quiet)
         fprintf(stderr, "[gp2x] %d frames, %.1f M instructions in %.2fs (%.1f MIPS)%s\n", f, m.linux.total_insns() / 1e6, secs,
                 m.linux.total_insns() / 1e6 / std::max(secs, 1e-6), m.linux.exited ? (" - " + m.linux.exit_reason).c_str() : "");
+    if (iostat) {
+        for (auto& s : stats) fprintf(stderr, "[io] %s 0x%05x x%llu\n", (s.first >> 31) ? "write" : "read ", s.first & 0x1FFFF, (unsigned long long)s.second);
+        fprintf(stderr, "[io] final pc 0x%08x\n", m.linux.cpu.r[15]);
+    }
     if (!out.empty()) save_ppm(out.c_str(), m.framebuffer(), Machine::W, Machine::H);
     if (!wav.empty()) save_wav(wav.c_str(), audio);
     return m.linux.exited ? m.linux.exit_code : 0;

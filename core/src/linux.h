@@ -115,6 +115,7 @@ struct SigAction { u32 handler = 0, flags = 0, restorer = 0; u64 mask = 0; };
 
 struct Thread {
     int tid = 0;
+    int pid = 100, ppid = 1;     // LinuxThreads threads are separate processes (no CLONE_THREAD)
     u32 r[16] = {0};
     u32 cpsr = 0x10;
     u32 tls = 0;

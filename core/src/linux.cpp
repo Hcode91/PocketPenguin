@@ -781,9 +781,18 @@ std::string Linux::to_host(const std::string& guest, bool follow, bool* found) {
         if (c == ".") continue;
         if (c == "..") { if (!done.empty()) done.pop_back(); continue; }
         std::string dir = host_of(done);
-        std::string cand = dir + "/" + c;
+        done.push_back(c);
+        std::string cand = host_of(done);
+        done.pop_back();
         struct stat s;
         if (lstat(cand.c_str(), &s) != 0) {
+            // A parent of a mount point (e.g. /mnt for /mnt/sd) exists even if the root lacks it.
+            std::string g;
+            for (auto& x : done) g += "/" + x;
+            g += "/" + c;
+            bool parent_of_mount = false;
+            for (auto& m : mounts) if (m.first.size() > g.size() && m.first.compare(0, g.size(), g) == 0 && m.first[g.size()] == '/') parent_of_mount = true;
+            if (parent_of_mount) { done.push_back(c); continue; }
             // FAT (SD card) is case-insensitive: look for a match ignoring case.
             bool ok = false;
             if (DIR* d = opendir(dir.c_str())) {
@@ -798,7 +807,9 @@ std::string Linux::to_host(const std::string& guest, bool follow, bool* found) {
                 for (auto& x : rem) r += "/" + x;
                 return r;
             }
-            cand = dir + "/" + c;
+            done.push_back(c);
+            cand = host_of(done);
+            done.pop_back();
             if (lstat(cand.c_str(), &s) != 0) { if (found) *found = false; return cand; }
         }
         if (S_ISLNK(s.st_mode) && (follow || !rem.empty())) {
@@ -1444,6 +1455,8 @@ s32 Linux::do_clone(u32 flags, u32 sp, u32 ptid, u32 tls, u32 ctid) {
     t->r[15] = sys_next_pc;
     t->cpsr = cpu.cpsr;
     t->tls = (flags & 0x80000) ? tls : cur->tls;
+    if (flags & 0x10000) { t->pid = cur->pid; t->ppid = cur->ppid; } // CLONE_THREAD
+    else { t->pid = t->tid; t->ppid = (flags & 0x8000) ? cur->ppid : cur->pid; } // CLONE_PARENT
     t->sigmask = cur->sigmask;
     if (flags & 0x100000) mem.w32(ptid, (u32)t->tid);
     if (flags & 0x01000000) mem.w32(ctid, (u32)t->tid);
@@ -1690,6 +1703,7 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
     case 90: { // old mmap: args in memory
         u32 v[6];
         mem.read(a[0], v, 24);
+        if (strace) log("  old_mmap(addr 0x%x, len 0x%x, prot %u, flags 0x%x, fd %d, off 0x%x)", v[0], v[1], v[2], v[3], (int)v[4], v[5]);
         return do_mmap(v[0], v[1], v[2], v[3], (int)v[4], v[5]);
     }
     case 192: return do_mmap(a[0], a[1], a[2], a[3], (int)a[4], (u64)a[5] << 12);
@@ -1709,9 +1723,9 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
     case 120: return do_clone(a[0], a[1], a[2], a[3], a[4]);
     case 11: return do_execve(S(a[0]), a[1], a[2]);
     case 114: case 7: return -G_ECHILD;           // wait4, waitpid
-    case 20: return 100;                          // getpid
+    case 20: return cur->pid;                     // getpid
     case 224: return cur->tid;                    // gettid
-    case 64: return 1;                            // getppid
+    case 64: return cur->ppid;                    // getppid
     case 24: case 47: case 49: case 50: case 199: case 200: case 201: case 202: return 0; // uid/gid
     case 23: case 46: case 213: case 214: case 57: case 66: case 65: case 132: case 147: return 0;
     case 205: case 80: return 0;                  // getgroups
@@ -1848,8 +1862,16 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
     case 186: if (a[1]) { mem.w32(a[1], 0); mem.w32(a[1] + 4, 2); mem.w32(a[1] + 8, 0); } return 0; // sigaltstack
     case 37: { // kill
         s32 pid = (s32)a[0];
-        if (pid != 100 && pid != 0 && pid != -1) return -G_ESRCH;
-        if (a[1]) queue_signal(0, (int)a[1]);
+        if (pid == 0 || pid == -1 || pid == -100) { if (a[1]) queue_signal(0, (int)a[1]); cpu.request_stop(); return 0; }
+        if (pid < 0) pid = -pid;
+        Thread* target = nullptr;
+        for (auto& t : threads) if (t->state != Thread::DEAD && t->tid == pid) target = t.get();
+        if (!target) for (auto& t : threads) if (t->state != Thread::DEAD && t->pid == pid) { target = t.get(); break; }
+        if (!target) return -G_ESRCH;
+        if (a[1]) {
+            if (target->pid == 100 && pid == 100 && target->tid == 100 && thread_count() > 1 && sigact[a[1]].handler == 0) queue_signal(0, (int)a[1]);
+            else queue_signal(target->tid, (int)a[1]);
+        }
         cpu.request_stop();
         return 0;
     }
@@ -1892,6 +1914,7 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
         return 0;
     }
     case 136: case 172: return 0;                // personality, prctl
+    case 149: return -G_ENOSYS;                  // _sysctl
     case 270: return 0;                          // arm_fadvise64_64
     case 384: { // getrandom
         static std::mt19937 rng(42);

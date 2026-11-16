@@ -5,6 +5,7 @@
 #pragma once
 #include "linux.h"
 #include <deque>
+#include <map>
 
 namespace gp2x {
 
@@ -66,6 +67,7 @@ public:
     u32 fb_bpp = 16, fb_line = 640, fb_yoff = 0;
     u32 palette[256];
     u32 buttons = 0;
+    std::map<u32, u64>* io_stats = nullptr;    // debug: register access counts (read: off, write: off|1<<31)
     u32 gpio_value();                           // /dev/GPIO read value
     // touch
     bool touch_down = false;
@@ -98,9 +100,16 @@ private:
     int poll_count = 0;
     bool poll_level = false;
     u64 dpc_clear_time = 0;
+    u32 mlc_addr_reg = 0x290E;                 // last written address pair (odd 0x290E / even 0x2912)
     int pal_index = 0;
     bool pal_hi = false;
     u32 pal_lo = 0;
+    // MMSP2 2D accelerator ("FastIO" block at 0xE0020000, also seen at 0xE0024000)
+    u32 blit_regs[64] = {0};
+    u8 blit_pat[128] = {0};
+    u32 blit_read(u32 off);
+    void blit_write(u32 off, u32 v, int size);
+    void blit_run();
     void render();
     void render_mmsp2();
     void render_pollux();

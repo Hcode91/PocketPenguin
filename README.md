@@ -15,7 +15,8 @@ GP2XDroid runs them like `qemu-user` does. It does **not** boot a firmware image
   follows `.gpe`/`.gpu` launcher shell scripts. SD card paths are case-insensitive, like the real FAT card.
 - **Hardware** (`core/src/gp2x.cpp`):
   - F100/F200: MMSP2 registers through `/dev/mem`. That includes the MLC display layer (16/8/24 bpp, palette,
-    scaling), the GPIO buttons, the vsync line and the 7.37 MHz TCOUNT timer.
+    scaling), the display controller, the 2D blitter (raster ops, transparency, patterns), the GPIO buttons,
+    the vsync line and the 7.37 MHz TCOUNT timer.
   - Wiz/Caanoo: Pollux registers. That includes the MLC layers (same layout as the LF1000 in DidjDroid),
     the DPC vsync flag and the timers.
   - Devices: `/dev/fb0`, `/dev/GPIO`, `/dev/dsp` (OSS), `/dev/mixer`, the F200 touchscreen and the
@@ -23,8 +24,11 @@ GP2XDroid runs them like `qemu-user` does. It does **not** boot a firmware image
 - **Timing**: time is virtual and driven by the emulated CPU clock. Programs that busy-wait on vsync are
   fast-forwarded, so a game's speed stays correct even when the phone is slower than the real console.
 
-SDL 1.2 games work through the standard fbcon / OSS / joystick paths. CI builds SDL-style test programs
-and checks them.
+SDL 1.2 games work through the standard fbcon / OSS / joystick paths, and through GP2X "HW SDL" (direct
+register access and the blitter). Old LinuxThreads-based programs work too, where each thread acts as its own
+process.
+
+Tested with a real game: **Go Bear Go!** (GP2X, Fenix engine). Its intro, title, menu and level 1 run, with music.
 
 ## Using it
 

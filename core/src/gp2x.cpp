@@ -4,10 +4,12 @@
 #include <cstring>
 #include <algorithm>
 #include <sys/stat.h>
+#include <cstdlib>
 
 namespace gp2x {
 
 static const u32 IO_BASE = 0xC0000000, IO_SIZE = 0x20000;
+static const u32 FASTIO_BASE = 0xE0000000, FASTIO_SIZE = 0x100000;
 
 // ---------------------------------------------------------------------------
 // Device files
@@ -351,6 +353,12 @@ Machine::Machine(Model m) : model(m), linux(this) {
         set32(regs, 0x4040, 319);                       // layer 1 left/right
         set32(regs, 0x4044, 239);                       // layer 1 top/bottom
     }
+    if (!pollux()) {
+        // MMSP2 display controller: LCD timing as set up by the kernel (320x240 progressive)
+        regs[0x2800 >> 1] = 0x0008;                     // DPC_CNTL
+        regs[0x2816 >> 1] = 319;                        // DPC_X_MAX
+        regs[0x2818 >> 1] = 239;                        // DPC_Y_MAX
+    }
     set_fb_mode(16, 0, 640);
 }
 
@@ -501,7 +509,132 @@ u8* Machine::ram_page(u32 pa) {
     return nullptr;
 }
 
-bool Machine::is_io(u32 pa) { return pa >= IO_BASE && pa < IO_BASE + IO_SIZE; }
+bool Machine::is_io(u32 pa) {
+    if (pa >= IO_BASE && pa < IO_BASE + IO_SIZE) return true;
+    return !pollux() && pa >= FASTIO_BASE && pa < FASTIO_BASE + FASTIO_SIZE;
+}
+
+// ---------------------------------------------------------------------------
+// MMSP2 2D accelerator: GDI ternary raster operations
+// ---------------------------------------------------------------------------
+enum { B_DSTCTRL = 0x00, B_DSTADDR = 0x04, B_DSTSTRIDE = 0x08, B_SRCCTRL = 0x0C, B_SRCADDR = 0x10,
+       B_SRCSTRIDE = 0x14, B_SRCFG = 0x18, B_SRCBG = 0x1C, B_PATCTRL = 0x20, B_PATFG = 0x24, B_PATBG = 0x28,
+       B_SIZE = 0x2C, B_CTRL = 0x30, B_RUN = 0x34 };
+
+u32 Machine::blit_read(u32 off) {
+    off &= 0xFF;
+    if (off >= 0x80) { u32 v; memcpy(&v, blit_pat + ((off - 0x80) & ~3u), 4); return v; }
+    if (off == B_RUN) return 0;                         // operations complete instantly
+    return blit_regs[off >> 2];
+}
+
+void Machine::blit_write(u32 off, u32 v, int size) {
+    off &= 0xFF;
+    if (off >= 0x80) {
+        u32 o = off - 0x80;
+        if (size == 4) memcpy(blit_pat + (o & ~3u), &v, 4);
+        else if (size == 2) memcpy(blit_pat + (o & ~1u), &v, 2);
+        else blit_pat[o] = (u8)v;
+        return;
+    }
+    u32& r = blit_regs[off >> 2];
+    if (size == 4) r = v;
+    else if (size == 2) { u32 sh = (off & 2) * 8; r = (r & ~(0xFFFFu << sh)) | ((v & 0xFFFF) << sh); }
+    else { u32 sh = (off & 3) * 8; r = (r & ~(0xFFu << sh)) | ((v & 0xFF) << sh); }
+    if ((off & ~3u) == B_RUN && (r & 1)) { blit_run(); r &= ~1u; }
+}
+
+void Machine::blit_run() {
+    u32 dctrl = blit_regs[B_DSTCTRL >> 2], sctrl = blit_regs[B_SRCCTRL >> 2], pctrl = blit_regs[B_PATCTRL >> 2];
+    u32 ctrl = blit_regs[B_CTRL >> 2], size = blit_regs[B_SIZE >> 2];
+    int w = (int)(size & 0x7FF), h = (int)((size >> 16) & 0x7FF);
+    if (!w || !h) return;
+    if (getenv("GP2X_BLITLOG"))
+        fprintf(stderr, "blit dctrl %x daddr %x dstr %d sctrl %x saddr %x sstr %d pctrl %x pfg %x pbg %x sfg %x sbg %x size %dx%d ctrl %08x pat %08x%08x\n",
+                dctrl, blit_regs[1], blit_regs[2], sctrl, blit_regs[4], blit_regs[5], pctrl, blit_regs[9], blit_regs[10],
+                blit_regs[6], blit_regs[7], w, h, ctrl, *(u32*)blit_pat, *(u32*)(blit_pat + 4));
+    bool d16 = dctrl & (1u << 5);
+    u32 dbpp = d16 ? 2 : 1;
+    u32 dfrac = dctrl & 31;
+    s64 dstride = (s32)blit_regs[B_DSTSTRIDE >> 2];
+    u32 daddr = (blit_regs[B_DSTADDR >> 2] & ~3u) + dfrac / 8;
+    bool src_on = sctrl & (1u << 8);
+    u32 sfmt = (sctrl >> 5) & 3;                       // 0 = 8bpp, 1 = 16bpp, 2 = 1bpp
+    u32 sfrac = sctrl & 31;
+    s64 sstride = (s32)blit_regs[B_SRCSTRIDE >> 2];
+    u32 sbase = blit_regs[B_SRCADDR >> 2] & ~3u;
+    bool pat_on = pctrl & (1u << 5);
+    u32 pfmt = (pctrl >> 3) & 3, poff = pctrl & 7;
+    u32 rop = ctrl & 0xFF;
+    bool transp = ctrl & (1u << 11);
+    u32 key = ctrl >> 16;
+    bool xpos = ctrl & (1u << 9), ypos = ctrl & (1u << 10);
+    u32 mask = d16 ? 0xFFFF : 0xFF;
+    u8* ramp = ram.data();
+    u64 rsz = ram.size();
+    auto rd = [&](u64 a, u32 bpp) -> u32 {
+        if (a + bpp > rsz) return 0;
+        return bpp == 2 ? (u32)(ramp[a] | (ramp[a + 1] << 8)) : ramp[a];
+    };
+    // Read the whole source first so overlapping copies behave like the hardware.
+    std::vector<u32> src;
+    if (src_on) {
+        src.resize((size_t)w * h);
+        for (int y = 0; y < h; y++) {
+            int sy = ypos ? y : -y;
+            for (int x = 0; x < w; x++) {
+                int sx = xpos ? x : -x;
+                u32 v;
+                if (sfmt == 2) {
+                    s64 bit = (s64)sfrac + sx;
+                    u64 a = (u64)((s64)sbase + (s64)sy * sstride + (bit >> 3));
+                    u32 b = a < rsz ? (ramp[a] >> (7 - (bit & 7))) & 1 : 0;
+                    v = b ? blit_regs[B_SRCFG >> 2] : blit_regs[B_SRCBG >> 2];
+                } else {
+                    u32 sb = sfmt == 1 ? 2 : 1;
+                    u64 a = (u64)((s64)sbase + sfrac / 8 + (s64)sy * sstride + (s64)sx * sb);
+                    v = rd(a, sb);
+                }
+                src[(size_t)y * w + x] = v & mask;
+            }
+        }
+    }
+    for (int y = 0; y < h; y++) {
+        int dy = ypos ? y : -y;
+        for (int x = 0; x < w; x++) {
+            int dx = xpos ? x : -x;
+            u64 a = (u64)((s64)daddr + (s64)dy * dstride + (s64)dx * dbpp);
+            if (a + dbpp > rsz) continue;
+            u32 s = src_on ? src[(size_t)y * w + x] : 0;
+            if (transp && src_on && s == (key & mask)) continue;
+            u32 p = 0;
+            if (pat_on || rop != 0xCC) {
+                u32 px = (u32)(x + dfrac / (8 * dbpp)) & 7, py = (u32)(y + poff) & 7;
+                if (pfmt == 2) p = ((blit_pat[py] >> (7 - px)) & 1) ? blit_regs[B_PATFG >> 2] : blit_regs[B_PATBG >> 2];
+                else if (pfmt == 1) p = blit_pat[(py * 8 + px) * 2] | (blit_pat[(py * 8 + px) * 2 + 1] << 8);
+                else p = blit_pat[py * 8 + px];
+                if (!pat_on) p = blit_regs[B_PATFG >> 2];
+            }
+            u32 d = rd(a, dbpp), r;
+            switch (rop) {
+            case 0xCC: r = s; break;
+            case 0xF0: r = p; break;
+            case 0xAA: r = d; break;
+            case 0x00: r = 0; break;
+            case 0xFF: r = 0xFFFFFFFF; break;
+            default:
+                r = 0;
+                for (int i = 0; i < 8; i++) {
+                    if (!((rop >> i) & 1)) continue;
+                    r |= ((i & 4) ? p : ~p) & ((i & 2) ? s : ~s) & ((i & 1) ? d : ~d);
+                }
+            }
+            r &= mask;
+            ramp[a] = (u8)r;
+            if (dbpp == 2) ramp[a + 1] = (u8)(r >> 8);
+        }
+    }
+}
 
 u16 Machine::gpio_pins(int port) {
     u16 v = 0xFFFF;
@@ -530,8 +663,16 @@ u16 Machine::gpio_pins(int port) {
 }
 
 u32 Machine::io_read(u32 pa, int size) {
+    if (pa >= FASTIO_BASE) {
+        if (io_stats) (*io_stats)[0x10000 | (pa & 0xFFFF)]++;
+        u32 v = blit_read(pa);
+        if (size == 4) return v;
+        u32 sh = (pa & 3) * 8;
+        return size == 2 ? (v >> (sh & 16)) & 0xFFFF : (v >> sh) & 0xFF;
+    }
     u32 off = pa - IO_BASE;
     if (off >= IO_SIZE) return 0;
+    if (io_stats) (*io_stats)[off]++;
     auto r16 = [&](u32 o) -> u16 {
         o &= ~1u;
         if (!pollux()) {
@@ -563,11 +704,19 @@ u32 Machine::io_read(u32 pa, int size) {
 }
 
 void Machine::io_write(u32 pa, u32 v, int size) {
+    if (pa >= FASTIO_BASE) {
+        if (io_stats) (*io_stats)[0x80010000u | (pa & 0xFFFF)]++;
+        blit_write(pa, v, size);
+        return;
+    }
     u32 off = pa - IO_BASE;
     if (off >= IO_SIZE) return;
+    if (io_stats) (*io_stats)[off | 0x80000000u]++;
     auto w16 = [&](u32 o, u16 val) {
         o &= ~1u;
         if (!pollux()) {
+            if (o == 0x290E || o == 0x2910) mlc_addr_reg = 0x290E;
+            else if (o == 0x2912 || o == 0x2914) mlc_addr_reg = 0x2912;
             if (o == 0x2958) { pal_index = val & 0xFF; pal_hi = false; }
             else if (o == 0x295A) {
                 if (!pal_hi) { pal_lo = val; pal_hi = true; }
@@ -637,7 +786,7 @@ void Machine::render_mmsp2() {
     u32 bytes = mode == 1 ? 1 : mode == 3 ? 3 : 2;
     u32 stride = regs[0x290C >> 1];
     if (!stride) stride = W * bytes;
-    u32 addr = regs[0x290E >> 1] | ((u32)regs[0x2910 >> 1] << 16);
+    u32 addr = regs[mlc_addr_reg >> 1] | ((u32)regs[(mlc_addr_reg + 2) >> 1] << 16);
     u32 hsc = regs[0x2906 >> 1];
     if (!hsc) hsc = 1024;
     u32 vsc = regs[0x2908 >> 1] | ((u32)regs[0x290A >> 1] << 16);
