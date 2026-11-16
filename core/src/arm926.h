@@ -1,4 +1,4 @@
-// GP2XDroid (CPU core shared with DidjDroid)
+// PocketPenguin (CPU core shared with PocketSprout)
 // ARM926EJ-S CPU core (ARMv5TE, ARM + Thumb, CP15 MMU) - interpreter.
 #pragma once
 #include <cstdint>

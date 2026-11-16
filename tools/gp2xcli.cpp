@@ -1,4 +1,4 @@
-// GP2XDroid desktop runner, used for testing the core without Android.
+// PocketPenguin desktop runner, used for testing the core without Android.
 //   gp2xcli [--model f100|f200|wiz|caanoo] [--root DIR] [--mhz N] [-f FRAMES] [-o shot.ppm]
 //           [-k FRAME:MASK]... [-t FRAME:X,Y | -t FRAME:-]... [--wav out.wav] [--mount /mnt/sd=HOSTDIR] [--strace] [--quiet] GAME [ARGS]
 // GAME is a guest path (inside --root). Without --root the host filesystem is used as "/".

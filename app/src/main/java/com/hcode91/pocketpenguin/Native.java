@@ -1,8 +1,8 @@
-package com.hcode91.gp2xdroid;
+package com.hcode91.pocketpenguin;
 
 /** JNI entry points into the C++ emulator core. */
 public final class Native {
-    static { System.loadLibrary("gp2xdroid"); }
+    static { System.loadLibrary("pocketpenguin"); }
 
     public static final int W = 320, H = 240;
 

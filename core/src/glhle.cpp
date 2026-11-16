@@ -1,4 +1,4 @@
-// GP2XDroid - libopengles_lite.so HLE glue (see glhle.h).
+// PocketPenguin - libopengles_lite.so HLE glue (see glhle.h).
 #include "glhle.h"
 #include "gles.h"
 #include "gp2x.h"

@@ -1,4 +1,4 @@
-package com.hcode91.gp2xdroid;
+package com.hcode91.pocketpenguin;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(24, 24, 24, 24);
         TextView title = new TextView(this);
-        title.setText("GP2XDroid");
+        title.setText("PocketPenguin");
         title.setTextSize(26);
         title.setTextColor(Color.WHITE);
         root.addView(title);
@@ -464,7 +464,7 @@ public class MainActivity extends Activity {
     }
 
     private static String safeName(String n) {
-        if (n == null || n.isEmpty()) return "unnamed";
+        if (n == null || n.isEmpty() || n.equals(".") || n.equals("..")) return "unnamed";
         return n.replace('/', '_').replace('\\', '_');
     }
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
-project(gp2xdroid CXX)
+project(pocketpenguin CXX)
 set(CORE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/src)
-add_library(gp2xdroid SHARED
+add_library(pocketpenguin SHARED
     jni_bridge.cpp
     ${CORE}/arm926.cpp
     ${CORE}/linux.cpp
@@ -9,6 +9,6 @@ add_library(gp2xdroid SHARED
     ${CORE}/fpa.cpp
     ${CORE}/glhle.cpp
     ${CORE}/gles.cpp)
-target_include_directories(gp2xdroid PRIVATE ${CORE})
-target_compile_options(gp2xdroid PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation)
-target_link_libraries(gp2xdroid log)
+target_include_directories(pocketpenguin PRIVATE ${CORE})
+target_compile_options(pocketpenguin PRIVATE -O3 -fexceptions -Wall -Wno-misleading-indentation)
+target_link_libraries(pocketpenguin log)

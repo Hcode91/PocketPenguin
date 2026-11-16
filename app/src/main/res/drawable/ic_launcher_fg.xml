@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PocketPenguin icon: a wide handheld with a penguin on its screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFE9EEF5" android:pathData="M28,38h52a10,10 0,0 1,10 10v14a10,10 0,0 1,-10 10h-52a10,10 0,0 1,-10 -10v-14a10,10 0,0 1,10 -10z" />
+    <path android:fillColor="#FF14213D" android:pathData="M40,42h28v26h-28z" />
+    <!-- penguin -->
+    <path android:fillColor="#FF0B0F1A" android:pathData="M54,46c5,0 7,5 7,10v8h-14v-8c0,-5 2,-10 7,-10z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M54,52c3,0 4,3 4,6v6h-8v-6c0,-3 1,-6 4,-6z" />
+    <path android:fillColor="#FFFFB703" android:pathData="M52,51h4l-2,2.5z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M51.5,49a1.2,1.2 0,1 1,-0.01 0zM56.5,49a1.2,1.2 0,1 1,-0.01 0z" />
+    <path android:fillColor="#FFFFB703" android:pathData="M49,64h4v2h-4zM55,64h4v2h-4z" />
+    <!-- d-pad and buttons -->
+    <path android:fillColor="#FF14213D" android:pathData="M25,53h8v4h-8zM27,51h4v8h-4z" />
+    <path android:fillColor="#FF3A86FF" android:pathData="M83,52a2.5,2.5 0,1 1,-0.01 0zM78,57a2.5,2.5 0,1 1,-0.01 0z" />
+</vector>

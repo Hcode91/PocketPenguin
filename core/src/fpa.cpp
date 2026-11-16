@@ -1,4 +1,4 @@
-// GP2XDroid - FPA floating-point emulation. Values are kept as host doubles (FPA extended precision
+// PocketPenguin - FPA floating-point emulation. Values are kept as host doubles (FPA extended precision
 // is wider, but every program we care about was compiled for double or single precision).
 #include "fpa.h"
 #include "linux.h"

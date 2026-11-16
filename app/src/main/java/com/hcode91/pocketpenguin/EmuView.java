@@ -1,4 +1,4 @@
-package com.hcode91.gp2xdroid;
+package com.hcode91.pocketpenguin;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;

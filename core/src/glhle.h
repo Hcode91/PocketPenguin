@@ -1,8 +1,8 @@
-// GP2XDroid - high-level emulation of the Wiz/Caanoo OpenGL ES library (libopengles_lite.so).
+// PocketPenguin - high-level emulation of the Wiz/Caanoo OpenGL ES library (libopengles_lite.so).
 //
 // The Wiz has the same MagicEyes GA3D 3D engine as the LeapFrog Didj. Rather than emulating that
 // undocumented hardware, calls into libopengles_lite.so's exported gl*/egl* functions are trapped
-// and run by the OpenGL ES 1.1 software renderer shared with DidjDroid (gles.cpp).
+// and run by the OpenGL ES 1.1 software renderer shared with PocketSprout (gles.cpp).
 #pragma once
 #include "arm926.h"
 #include <functional>

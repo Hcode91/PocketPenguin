@@ -1,4 +1,4 @@
-package com.hcode91.gp2xdroid;
+package com.hcode91.pocketpenguin;
 
 import java.io.File;
 import java.io.FileOutputStream;

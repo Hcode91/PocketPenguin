@@ -1,4 +1,4 @@
-// GP2XDroid - GP2X F100/F200, Wiz and Caanoo machine model.
+// PocketPenguin - GP2X F100/F200, Wiz and Caanoo machine model.
 // Provides the hardware registers games reach through /dev/mem (MMSP2 on the F100/F200, Pollux on
 // the Wiz/Caanoo), the device files (/dev/fb0, /dev/GPIO, /dev/dsp, /dev/mixer, touchscreen,
 // joystick), display output and audio output.

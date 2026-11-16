@@ -1,4 +1,4 @@
-// GP2XDroid - GP2X F100/F200, Wiz and Caanoo machine model.
+// PocketPenguin - GP2X F100/F200, Wiz and Caanoo machine model.
 #include "gp2x.h"
 #include "glhle.h"
 #include <cstdio>

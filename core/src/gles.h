@@ -1,4 +1,4 @@
-// GP2XDroid (from DidjDroid) - OpenGL ES 1.1 + EGL implementation used for HLE of libopengles_lite.so
+// PocketPenguin (from PocketSprout) - OpenGL ES 1.1 + EGL implementation used for HLE of libopengles_lite.so
 #pragma once
 #include "arm926.h"
 #include <map>

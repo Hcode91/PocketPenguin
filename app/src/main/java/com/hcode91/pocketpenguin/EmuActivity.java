@@ -1,4 +1,4 @@
-package com.hcode91.gp2xdroid;
+package com.hcode91.pocketpenguin;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -152,7 +152,7 @@ public class EmuActivity extends Activity {
 
     void showMenu() {
         new AlertDialog.Builder(this)
-                .setTitle("GP2XDroid")
+                .setTitle("PocketPenguin")
                 .setItems(new String[] {"Show log", "Restart game", "Quit game"}, (d, which) -> {
                     if (which == 0) view.showConsole(Native.console());
                     else if (which == 1) { stopEmu(); Native.shutdown(); startGame(); }

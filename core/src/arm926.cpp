@@ -1,4 +1,4 @@
-// GP2XDroid - ARM926EJ-S interpreter (ARMv5TE)
+// PocketPenguin - ARM926EJ-S interpreter (ARMv5TE)
 #include "arm926.h"
 
 namespace gp2x {

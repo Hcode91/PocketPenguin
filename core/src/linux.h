@@ -1,4 +1,4 @@
-// GP2XDroid - user-mode ARM Linux runtime.
+// PocketPenguin - user-mode ARM Linux runtime.
 // Runs a GP2X / Wiz / Caanoo game's Linux ELF program directly on the ARM interpreter and
 // emulates the kernel at the system-call level (like qemu-user). Hardware registers that games
 // reach through /dev/mem, and device files such as /dev/fb0 or /dev/dsp, are provided by a

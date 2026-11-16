@@ -1,4 +1,4 @@
-// GP2XDroid - user-mode ARM Linux runtime (system call emulation).
+// PocketPenguin - user-mode ARM Linux runtime (system call emulation).
 #include "linux.h"
 #include <cstdio>
 #include <cstdarg>

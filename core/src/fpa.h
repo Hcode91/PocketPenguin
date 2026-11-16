@@ -1,4 +1,4 @@
-// GP2XDroid - FPA floating-point emulation (what the Linux kernel's NWFPE did on the GP2X/Wiz).
+// PocketPenguin - FPA floating-point emulation (what the Linux kernel's NWFPE did on the GP2X/Wiz).
 // Old ARM Linux toolchains (OABI, glibc 2.3 era) used FPA instructions on coprocessors 1 and 2;
 // the GP2X and Wiz have no FPA hardware, so the kernel emulated them on the undefined-instruction trap.
 #pragma once
