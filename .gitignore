@@ -1,0 +1,17 @@
+build/
+.gradle/
+app/.cxx/
+local.properties
+*.iml
+.idea/
+*.ppm
+*.wav
+/gp2xcli
+*.so
+tests/guest/hello_static
+tests/guest/hello_thumb
+tests/guest/hello_dyn
+tests/guest/hwtest
+tests/guest/oabi
+tests/guest/sdltest
+__pycache__/
