@@ -21,6 +21,8 @@ GP2XDroid runs them like `qemu-user` does. It does **not** boot a firmware image
     the DPC vsync flag and the timers.
   - Devices: `/dev/fb0`, `/dev/GPIO`, `/dev/dsp` (OSS), `/dev/mixer`, the F200 touchscreen and the
     Caanoo joystick (`/dev/input/js0`).
+- **FPA floating point**: old toolchains (e.g. the Wiz firmware's glibc) use FPA instructions, which the
+  real kernel emulated in software. `core/src/fpa.cpp` does the same.
 - **Timing**: time is virtual and driven by the emulated CPU clock. Programs that busy-wait on vsync are
   fast-forwarded, so a game's speed stays correct even when the phone is slower than the real console.
 
@@ -28,7 +30,10 @@ SDL 1.2 games work through the standard fbcon / OSS / joystick paths, and throug
 register access and the blitter). Old LinuxThreads-based programs work too, where each thread acts as its own
 process.
 
-Tested with a real game: **Go Bear Go!** (GP2X, Fenix engine). Its intro, title, menu and level 1 run, with music.
+Tested with real games:
+- **Go Bear Go!** (GP2X, Fenix engine): intro, title, menu and level 1, with music.
+- **Deicide 3** (Wiz, dynamically linked against the Wiz firmware 1.2.6 libraries): intro cutscenes, story and
+  sound. Its full-motion video is CPU-heavy, because the Wiz ran it at 533 MHz.
 
 ## Using it
 
@@ -57,7 +62,6 @@ Tests: `tests/run_tests.sh ./gp2xcli` (needs `gcc-arm-linux-gnueabi`).
 ## Not done yet
 
 - The F100's second CPU (ARM940T), which some emulators use for sound.
-- FPA floating-point instructions (very old hard-float builds). These are reported in the log.
 - `fork()`/`system()`.
 - Games sold through the GPH store (INKA DRM, e.g. Deicide 3 and the Toaplan ports). Their licence sits in a
   protected area of the original SD card that a card dump doesn't contain. The emulator reports this.

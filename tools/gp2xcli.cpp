@@ -10,6 +10,7 @@
 #include <vector>
 #include <map>
 #include <chrono>
+#include <algorithm>
 
 using namespace gp2x;
 
@@ -42,6 +43,8 @@ int main(int argc, char** argv) {
     int frames = 600, mhz = 200;
     bool strace = false, quiet = false, iostat = false;
     std::map<u32, u64> stats;
+    bool profile = false;
+    static std::map<u32, u64> prof;
     std::map<int, u32> keys;
     std::vector<std::string> args;
     std::vector<std::pair<std::string, std::string>> m_mounts;
@@ -59,6 +62,7 @@ int main(int argc, char** argv) {
         else if (a == "--wav") wav = next();
         else if (a == "--strace") strace = true;
         else if (a == "--iostat") iostat = true;
+        else if (a == "--profile") profile = true;
 
         else if (a == "--quiet") quiet = true;
         else if (a == "--release") release = next();
@@ -70,6 +74,7 @@ int main(int argc, char** argv) {
     Machine m(model);
     m.linux.strace = strace;
     if (iostat) m.io_stats = &stats;
+    if (profile) m.linux.cpu.trace_hook = [](ARM926* c, u32 pc, void*) { if ((c->insn_count & 255) == 0) prof[pc & ~0x3Fu]++; };
     m.linux.mounts = m_mounts;
     if (!release.empty()) m.linux.uname_release = release;
     m.linux.on_log = [&](const std::string& s) { if (!quiet) fprintf(stderr, "[gp2x] %s\n", s.c_str()); };
@@ -94,6 +99,13 @@ int main(int argc, char** argv) {
     if (iostat) {
         for (auto& s : stats) fprintf(stderr, "[io] %s 0x%05x x%llu\n", (s.first >> 31) ? "write" : "read ", s.first & 0x1FFFF, (unsigned long long)s.second);
         fprintf(stderr, "[io] final pc 0x%08x\n", m.linux.cpu.r[15]);
+    }
+    if (profile) {
+        std::vector<std::pair<u64, u32>> v;
+        u64 tot = 0;
+        for (auto& p : prof) { v.push_back({p.second, p.first}); tot += p.second; }
+        std::sort(v.rbegin(), v.rend());
+        for (size_t i = 0; i < v.size() && i < 25; i++) fprintf(stderr, "[prof] 0x%08x %5.1f%%\n", v[i].second, 100.0 * v[i].first / tot);
     }
     if (!out.empty()) save_ppm(out.c_str(), m.framebuffer(), Machine::W, Machine::H);
     if (!wav.empty()) save_wav(wav.c_str(), audio);

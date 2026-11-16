@@ -5,6 +5,7 @@
 // Hardware implementation (see gp2x.h).
 #pragma once
 #include "arm926.h"
+#include "fpa.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -119,6 +120,7 @@ struct Thread {
     u32 r[16] = {0};
     u32 cpsr = 0x10;
     u32 tls = 0;
+    FPAState fpa;                // emulated FPA floating-point registers
     enum State { RUN, BLOCKED, DEAD } state = RUN;
     // Blocking
     u64 wake_at = ~0ull;
@@ -135,6 +137,8 @@ struct Thread {
     std::vector<Frame> frames;
     // Timed retry (poll/select)
     u32 retry_pc = 0;
+    u64 last_time_query = 0;     // instruction count at the previous clock read (spin detection)
+    int time_spins = 0;
     u64 retry_deadline = 0;
 };
 
@@ -153,6 +157,7 @@ public:
     std::function<void(const std::string&)> on_log;     // emulator diagnostics
     std::function<void(const std::string&)> on_output;  // guest stdout/stderr
     bool strace = false;
+    u64 fpa_count = 0;                   // FPA instructions emulated (statistics)
 
     // Load a program (ELF or a launcher shell script) and set up the main thread.
     bool load(const std::string& guest_path, std::vector<std::string> argv, std::string* err);
@@ -238,6 +243,7 @@ private:
     s32 do_clone(u32 flags, u32 sp, u32 ptid, u32 tls, u32 ctid);
     s32 do_sigaction(int sig, u32 act, u32 old, bool rt);
     void set_tls(u32 v);
+    void time_query();                   // detect busy-waiting on the clock
     s32 do_execve(const std::string& path, u32 argv, u32 envp);
     std::string parse_launcher(const std::string& host, const std::string& guest_dir, std::vector<std::string>* argv);
 };

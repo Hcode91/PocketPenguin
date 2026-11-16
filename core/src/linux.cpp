@@ -1208,9 +1208,14 @@ bool Linux::undef_entry(ARM926* c, u32 pc, u32 insn, void* user) {
         c->r[15] = pc + 4;
         return true;
     }
+    if (!thumb && L->cur && fpa_exec(L->cur->fpa, *c, L->mem, insn, pc)) {
+        L->fpa_count++;
+        c->r[15] = pc + 4;
+        return true;
+    }
     u32 cp = (insn >> 8) & 15;
     const char* what = (!thumb && (insn & 0x0C000000) == 0x0C000000 && (cp == 1 || cp == 2))
-        ? " (FPA floating point: this game was built for hardware FP emulation, not supported yet)"
+        ? " (unsupported FPA floating-point instruction)"
         : (!thumb && (insn & 0x0C000000) == 0x0C000000 && (cp == 10 || cp == 11)) ? " (VFP)" : "";
     char buf[200];
     snprintf(buf, sizeof buf, "Illegal instruction 0x%08x at 0x%08x%s", insn, pc, what);
@@ -1282,6 +1287,17 @@ static s32 nb_fix(Linux& L, const std::shared_ptr<File>& f, s32 r) {
         return -G_EAGAIN;
     }
     return r;
+}
+
+// A thread reading the clock again and again with almost no work in between is busy-waiting
+// (a frame limiter). Jump virtual time ahead in small steps so the wait costs few host instructions;
+// the game still sees time pass at the right rate.
+void Linux::time_query() {
+    u64 n = cpu.insn_count;
+    if (n - cur->last_time_query < 4000) {
+        if (++cur->time_spins > 20) skip_to(now() + cycles_from_usec(250));
+    } else cur->time_spins = 0;
+    cur->last_time_query = n;
 }
 
 void Linux::set_tls(u32 v) {
@@ -1458,6 +1474,7 @@ s32 Linux::do_clone(u32 flags, u32 sp, u32 ptid, u32 tls, u32 ctid) {
     if (flags & 0x10000) { t->pid = cur->pid; t->ppid = cur->ppid; } // CLONE_THREAD
     else { t->pid = t->tid; t->ppid = (flags & 0x8000) ? cur->ppid : cur->pid; } // CLONE_PARENT
     t->sigmask = cur->sigmask;
+    t->fpa = cur->fpa;
     if (flags & 0x100000) mem.w32(ptid, (u32)t->tid);
     if (flags & 0x01000000) mem.w32(ctid, (u32)t->tid);
     if (flags & 0x200000) t->clear_tid = ctid;
@@ -1740,8 +1757,9 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
         mem.write(a[0], u, 390);
         return 0;
     }
-    case 13: { u32 t = (u32)((epoch_usec + usec()) / 1000000); if (a[0]) mem.w32(a[0], t); return t; }
+    case 13: { time_query(); u32 t = (u32)((epoch_usec + usec()) / 1000000); if (a[0]) mem.w32(a[0], t); return t; }
     case 78: { // gettimeofday
+        time_query();
         u64 us = epoch_usec + usec();
         if (a[0]) { mem.w32(a[0], (u32)(us / 1000000)); mem.w32(a[0] + 4, (u32)(us % 1000000)); }
         if (a[1]) { mem.w32(a[1], 0); mem.w32(a[1] + 4, 0); }
@@ -1749,6 +1767,7 @@ s64 Linux::dispatch(u32 nr, u32* a, bool* noret) {
     }
     case 79: return 0;
     case 263: case 403: { // clock_gettime(64)
+        time_query();
         u64 us = (a[0] == 0 || a[0] == 8) ? epoch_usec + usec() : usec();
         put_timespec(mem, a[1], us, nr == 403);
         return 0;
