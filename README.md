@@ -123,3 +123,10 @@ License, or (at your option) any later version. It is distributed WITHOUT ANY WA
 [LICENSE](LICENSE) for the full text.
 
 Copyright (C) 2026 Hcode91
+
+## Starting a game from another app
+
+Launchers and trackers (such as BacklogQuest's home-screen tiles) can start a game directly: send
+`com.hcode91.pocket.LAUNCH_GAME` to the app's launcher activity with the extra `game_id`, the
+game's name in the library (its folder name, any case). If the game isn't in the library, or it
+has several start files and none has been chosen yet, the library opens instead.

@@ -34,6 +34,11 @@ import java.util.zip.ZipInputStream;
 /** Game library: import games (folder or zip), pick the model and launch. */
 public class MainActivity extends Activity {
     private static final int PICK_GAME_DIR = 1, PICK_GAME_ZIP = 2, PICK_FW_DIR = 3, PICK_FW_ZIP = 4, PICK_SD_IMG = 5;
+    /**
+     * The request another app (BacklogQuest's home-screen tiles) sends to start a game straight away.
+     * Extra "game_id": the game's name in the library (its folder), matched ignoring case.
+     */
+    public static final String ACTION_LAUNCH_GAME = "com.hcode91.pocket.LAUNCH_GAME";
     private static final String[] MODEL_NAMES = {"GP2X F100", "GP2X F200 (touchscreen)", "GP2X Wiz (touchscreen)", "GP2X Caanoo (touchscreen)"};
 
     private File sdDir;
@@ -88,6 +93,26 @@ public class MainActivity extends Activity {
         root.addView(list, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
         refresh();
+        // Started for a game: go straight to it. When it can't start on its own (not in the
+        // library, or it needs its start file chosen), the library stays open.
+        if (b == null && launchFrom(getIntent())) finish();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (launchFrom(intent)) finish();
+    }
+
+    private boolean launchFrom(Intent intent) {
+        if (intent == null || !ACTION_LAUNCH_GAME.equals(intent.getAction())) return false;
+        String wanted = intent.getStringExtra("game_id");
+        if (wanted == null || wanted.trim().isEmpty()) return false;
+        for (String g : games) {
+            if (g.equalsIgnoreCase(wanted.trim())) return launch(g);
+        }
+        info("Game not found", "\"" + wanted.trim() + "\" isn't in the library. Its name here must match the game's folder name.");
+        return false;
     }
 
     private Button button(String label, View.OnClickListener l) {
@@ -129,16 +154,18 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void launch(String g) {
+    /** Starts the game; false when it couldn't start yet (no start file, or one has to be chosen). */
+    private boolean launch(String g) {
         List<String> files = new ArrayList<>();
         findLaunchables(new File(sdDir, g), "", files, 0);
         String saved = prefs.getString(g + ".exe", null);
-        if (saved != null && files.contains(saved)) { run(g, saved); return; }
-        if (files.isEmpty()) { info("No .gpe file found", "The folder " + g + " has no .gpe, .gpu or .sh file to start."); return; }
-        if (files.size() == 1) { run(g, files.get(0)); return; }
+        if (saved != null && files.contains(saved)) { run(g, saved); return true; }
+        if (files.isEmpty()) { info("No .gpe file found", "The folder " + g + " has no .gpe, .gpu or .sh file to start."); return false; }
+        if (files.size() == 1) { run(g, files.get(0)); return true; }
         String[] arr = files.toArray(new String[0]);
         new AlertDialog.Builder(this).setTitle("Which file starts the game?")
                 .setItems(arr, (d, w) -> { prefs.edit().putString(g + ".exe", arr[w]).apply(); run(g, arr[w]); }).show();
+        return false;
     }
 
     private void run(String g, String exe) {
